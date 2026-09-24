@@ -82,14 +82,14 @@ def fetch_history(city: str, start: str, end: str) -> pd.DataFrame:
 
 
 def fetch_recent(city: str, past_days: int = 30) -> pd.DataFrame:
-    """Hourly data for the last `past_days` days through tomorrow (live inference).
+    """Hourly data for the last `past_days` days through three days ahead (live inference).
 
     Today's and tomorrow's pollutant hours beyond "now" are CAMS forecasts, and
     tomorrow's weather is a numerical weather forecast. Those are exactly the
     inputs available to an operational forecaster.
     """
     lat, lon = CITIES[city]
-    base = {"latitude": lat, "longitude": lon, "timezone": TIMEZONE, "past_days": past_days, "forecast_days": 2}
+    base = {"latitude": lat, "longitude": lon, "timezone": TIMEZONE, "past_days": past_days, "forecast_days": 4}
     aq = _hourly_frame(_get(AQ_URL, {**base, "hourly": ",".join(AQ_VARS)}), AQ_VARS)
     wx = _hourly_frame(_get(FORECAST_URL, {**base, "hourly": ",".join(WX_VARS)}), WX_VARS)
     return aq.join(wx, how="outer")

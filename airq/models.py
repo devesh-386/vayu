@@ -50,7 +50,9 @@ class DeltaRegressor(RegressorMixin, BaseEstimator):
         return self
 
     def predict(self, X):
-        return X["aqi"].to_numpy() + self.model.predict(X)
+        base = X["aqi"].to_numpy(dtype=float)
+        p = self.model.predict(X)
+        return base[:, None] + p if p.ndim == 2 else base + p
 
     @property
     def best_iteration(self):
@@ -79,6 +81,34 @@ def make_xgb(**kw):
     )
     params.update(kw)
     return DeltaRegressor(XGBRegressor(**params))
+
+
+QUANTILES = (0.1, 0.5, 0.9)
+
+
+def make_quantile_xgb(**kw):
+    """XGBoost trained on the pinball loss for the 10th / 50th / 90th percentiles.
+
+    Gives an 80% prediction interval around each forecast.
+    """
+    params = dict(
+        objective="reg:quantileerror", quantile_alpha=np.array(QUANTILES), n_estimators=3000,
+        learning_rate=0.03, max_depth=5, subsample=0.8, colsample_bytree=0.8, min_child_weight=3,
+        early_stopping_rounds=150, random_state=SEED, n_jobs=N_JOBS,
+    )
+    params.update(kw)
+    return DeltaRegressor(XGBRegressor(**params))
+
+
+def contributions(model: "DeltaRegressor", X: pd.DataFrame) -> pd.DataFrame:
+    """Per-feature SHAP contributions (AQI points) to the predicted change from today's AQI.
+
+    Uses XGBoost's built-in TreeSHAP; the last column is the bias term.
+    """
+    import xgboost as xgb
+    booster = model.model.get_booster()
+    c = booster.predict(xgb.DMatrix(X), pred_contribs=True, iteration_range=(0, model.best_iteration + 1))
+    return pd.DataFrame(c, columns=list(X.columns) + ["bias"], index=X.index)
 
 
 # ---------------------------------------------------------------- LSTM

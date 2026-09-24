@@ -81,8 +81,21 @@ def clip_outliers(df: pd.DataFrame, fences: dict) -> tuple[pd.DataFrame, int]:
     return df, n
 
 
-def build_features(df: pd.DataFrame) -> pd.DataFrame:
-    """Feature table: one row per (city, day t) with target = AQI on day t+1.
+# Diwali (firecracker smoke) and the Oct-Nov crop-residue burning season drive the worst
+# episodes in north India.
+DIWALI = pd.to_datetime(["2022-10-24", "2023-11-12", "2024-11-01", "2025-10-20", "2026-11-08", "2027-10-29"])
+STUBBLE_CITIES = {"Delhi", "Lucknow"}
+HORIZONS = (1, 2, 3)
+
+
+def _days_to_diwali(dates: pd.DatetimeIndex) -> np.ndarray:
+    """Signed days from each date to the nearest Diwali (negative = before)."""
+    diff = (dates.values[:, None] - DIWALI.values[None, :]) / np.timedelta64(1, "D")
+    return diff[np.arange(len(dates)), np.abs(diff).argmin(axis=1)]
+
+
+def build_features(df: pd.DataFrame, horizon: int = 1) -> pd.DataFrame:
+    """Feature table: one row per (city, day t) with target = AQI on day t+horizon.
 
     `df` must already contain the aqi column (computed on unclipped data) and the
     pollutant columns (optionally clipped).
@@ -106,17 +119,21 @@ def build_features(df: pd.DataFrame) -> pd.DataFrame:
         f["pm2_5_roll7"] = g["pm2_5"].rolling(7, min_periods=5).mean()
         for w in ("temp", "temp_max", "temp_min", "humidity", "wind_speed", "wind_u", "wind_v", "precip", "pressure", "blh"):
             f[w] = g[w]
-        # Tomorrow's weather: in live use this comes from the numerical weather forecast.
+        # Weather on the target day: in live use this comes from the numerical weather forecast.
         for w in FORECAST_WEATHER:
-            f[f"next_{w}"] = g[w].shift(-1)
+            f[f"next_{w}"] = g[w].shift(-horizon)
         f["temp_change"] = f["next_temp"] - f["temp"]
         doy = g.index.dayofyear
         f["doy_sin"] = np.sin(2 * np.pi * doy / 365.25)
         f["doy_cos"] = np.cos(2 * np.pi * doy / 365.25)
         f["weekday"] = g.index.dayofweek
         f["is_weekend"] = (g.index.dayofweek >= 5).astype(int)
-        f["target_aqi"] = g["aqi"].shift(-1)
-        f["target_date"] = f.index + pd.Timedelta(days=1)
+        target_dates = g.index + pd.Timedelta(days=horizon)
+        f["diwali_days"] = np.clip(_days_to_diwali(target_dates), -30, 30)
+        f["diwali_window"] = ((f["diwali_days"] >= -2) & (f["diwali_days"] <= 3)).astype(int)
+        f["stubble_season"] = int(city in STUBBLE_CITIES) * target_dates.month.isin([10, 11]).astype(int)
+        f["target_aqi"] = g["aqi"].shift(-horizon)
+        f["target_date"] = target_dates
         rows.append(f.reset_index())
     feats = pd.concat(rows, ignore_index=True)
     for c in CITIES:
@@ -139,7 +156,7 @@ def split(feats: pd.DataFrame):
     )
 
 
-def prepare(daily: pd.DataFrame):
+def prepare(daily: pd.DataFrame, horizon: int = 1):
     """Full preprocessing: returns (feature table, fences, report dict)."""
     report = {"raw_rows": len(daily), "raw_missing_pct": daily[POLLUTANTS].isna().mean().mul(100).round(2).to_dict()}
     cleaned = clean(daily)
@@ -148,7 +165,7 @@ def prepare(daily: pd.DataFrame):
     fences = outlier_fences(with_aqi)
     clipped, n_clipped = clip_outliers(with_aqi, fences)
     report["outlier_cells_clipped"] = n_clipped
-    feats = build_features(clipped)
+    feats = build_features(clipped, horizon)
     before = len(feats)
     feats = feats.dropna().reset_index(drop=True)
     report["feature_rows"] = len(feats)

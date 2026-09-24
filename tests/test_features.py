@@ -80,3 +80,23 @@ def test_long_weather_gap_filled_with_training_climatology():
     out = F.clean(d)
     assert out["blh"].notna().all()
     assert out["pm2_5"].notna().all()
+
+
+def test_horizon_target_is_aqi_h_days_later():
+    daily = F.add_aqi(F.clean(synthetic_daily()))
+    for h in (2, 3):
+        feats = F.build_features(daily, horizon=h)
+        g = feats[feats["city"] == "Chennai"].sort_values("date")
+        np.testing.assert_allclose(g["target_aqi"].iloc[:-h].to_numpy(), g["aqi"].iloc[h:].to_numpy())
+        assert (g["target_date"] - g["date"]).dt.days.eq(h).all()
+        # weather features describe the target day
+        np.testing.assert_allclose(g["next_temp"].iloc[:-h].to_numpy(), g["temp"].iloc[h:].to_numpy())
+
+
+def test_diwali_and_stubble_features():
+    d = synthetic_daily(n=10, cities=("Delhi", "Chennai"))
+    d["date"] = np.tile(pd.date_range("2025-10-15", periods=10, freq="D"), 2)
+    feats = F.build_features(F.add_aqi(F.clean(d)), horizon=1)
+    row = feats[(feats["city"] == "Delhi") & (feats["date"] == "2025-10-19")].iloc[0]  # target = Diwali 2025-10-20
+    assert row["diwali_days"] == 0 and row["diwali_window"] == 1 and row["stubble_season"] == 1
+    assert feats.loc[feats["city"] == "Chennai", "stubble_season"].eq(0).all()

@@ -23,7 +23,8 @@ from .aqi import AQI_BANDS, CATEGORIES, CATEGORY_COLORS
 from .config import CITIES, DATA_DIR, FIGURES_DIR, MODELS_DIR, N_JOBS, POLLUTANTS, REPORTS_DIR, SEED
 from .data import load_dataset
 from .evaluate import category_confusion, metrics
-from .models import LSTMForecaster, Persistence, make_rf, make_ridge, make_xgb, sequence_index
+from .models import (LSTMForecaster, Persistence, contributions, make_quantile_xgb, make_rf, make_ridge, make_xgb,
+                     sequence_index)
 
 
 def log(msg):
@@ -148,35 +149,40 @@ def save_result_figures(test, preds, ranking, best_name):
 
 # ---------------------------------------------------------------- main
 
-def main(refresh: bool = False, skip_lstm: bool = False):
-    for d in (MODELS_DIR, REPORTS_DIR, FIGURES_DIR):
-        d.mkdir(parents=True, exist_ok=True)
+def save_extra_figures(summary: dict, shap_mean: pd.Series):
+    fig, ax = plt.subplots(figsize=(7, 4))
+    hs = sorted(summary)
+    for name in summary[hs[0]]["test_mae"]:
+        ax.plot(hs, [summary[h]["test_mae"][name] for h in hs], marker="o",
+                lw=2.2 if name.startswith("Persistence") else 1.4,
+                color="#999999" if name.startswith("Persistence") else None, label=name)
+    ax.set(title="Forecast error grows with lead time (test MAE)", xlabel="Days ahead", ylabel="MAE (AQI points)",
+           xticks=hs)
+    ax.legend(frameon=False, fontsize=8)
+    fig.tight_layout()
+    fig.savefig(FIGURES_DIR / "error_by_horizon.png", dpi=130)
+    plt.close(fig)
 
-    log("1/6 data collection")
-    daily = load_dataset(refresh=refresh)
-    daily.to_csv(DATA_DIR / "daily.csv", index=False)
-    log(f"    {len(daily)} city-days, {daily['city'].nunique()} cities, "
-        f"{daily['date'].min():%Y-%m-%d} .. {daily['date'].max():%Y-%m-%d}")
+    top = shap_mean.head(15)[::-1]
+    fig, ax = plt.subplots(figsize=(8, 5.5))
+    ax.barh(top.index, top.values, color="#6a51a3")
+    ax.set(title="SHAP: mean |contribution| to next-day forecast (XGBoost, test)", xlabel="AQI points")
+    fig.tight_layout()
+    fig.savefig(FIGURES_DIR / "shap_importance.png", dpi=130)
+    plt.close(fig)
 
-    log("2/6 preprocessing + feature engineering")
-    feats, fences, prep_report = F.prepare(daily)
-    feats = feats.sort_values(["city", "date"]).reset_index(drop=True)
-    daily_aqi = F.add_aqi(F.clean(daily))
-    save_eda_figures(daily_aqi)
+
+def train_horizon(feats: pd.DataFrame, h: int, skip_lstm: bool):
+    """Select features, tune, train and evaluate every model for one lead time (days ahead)."""
     all_cols = F.feature_columns(feats)
     train, val, test = F.split(feats)
-    log(f"    {len(all_cols)} features | train {len(train)} / val {len(val)} / test {len(test)} rows")
+    log(f"  [{h}d] {len(all_cols)} features | train {len(train)} / val {len(val)} / test {len(test)}")
 
-    log("3/6 feature selection")
     selected, ranking = select_features(train, val, all_cols)
-    log(f"    kept {len(selected)} of {len(all_cols)} features")
-
-    log("4/6 hyper-parameter tuning on the validation set")
     rf_params = tune_rf(train, val, selected)
     xgb_params = tune_xgb(train, val, selected)
-    log(f"    RF {rf_params} | XGB {xgb_params}")
+    log(f"  [{h}d] kept {len(selected)} features | RF {rf_params} | XGB {xgb_params}")
 
-    log("5/6 training final models")
     y_tr = train["target_aqi"]
     models = {
         "Persistence (baseline)": Persistence(),
@@ -211,34 +217,37 @@ def main(refresh: bool = False, skip_lstm: bool = False):
         val_preds["LSTM"], test_preds["LSTM"] = vp, tp
         lstm_info = {"device": lstm.device, "best_epoch": lstm.best_epoch,
                      "test_rows_with_full_history": int(len(te_rows)), "test_rows": int(len(test))}
-        log(f"    LSTM trained on {lstm.device}, best epoch {lstm.best_epoch}")
 
-    log("6/6 evaluation")
+    # 80% prediction interval from quantile XGBoost.
+    qxgb = make_quantile_xgb(max_depth=xgb_params["max_depth"], learning_rate=xgb_params["learning_rate"])
+    qxgb.fit(train[selected], y_tr, eval_set=[(val[selected], val["target_aqi"])], verbose=False)
+    # Conformalised quantile regression: widen the band by the validation-set error margin so
+    # that it really covers ~80% of outcomes (raw quantile models are usually over-confident).
+    qv, yv = qxgb.predict(val[selected]), val["target_aqi"].to_numpy()
+    scores = np.maximum(qv[:, 0] - yv, yv - qv[:, 2])
+    margin = float(np.quantile(scores, min(1.0, 0.8 * (1 + 1 / len(yv)))))
+    q = qxgb.predict(test[selected])
+    y = test["target_aqi"].to_numpy()
+    lo, hi = q[:, 0] - margin, q[:, 2] + margin
+    interval = {"coverage_80_raw": round(float(np.mean((y >= q[:, 0]) & (y <= q[:, 2]))), 4),
+                "coverage_80": round(float(np.mean((y >= lo) & (y <= hi))), 4),
+                "mean_width": round(float(np.mean(hi - lo)), 1), "conformal_margin": round(margin, 2)}
+
     results = {n: {"validation": metrics(val["target_aqi"], val_preds[n]),
                    "test": metrics(test["target_aqi"], test_preds[n])} for n in models}
     # Choose the deployed model on validation MAE only; the test set stays untouched until reporting.
     candidates = [n for n in models if not n.startswith("Persistence")]
     best_name = min(candidates, key=lambda n: results[n]["validation"]["MAE"])
     table = pd.DataFrame({n: r["test"] for n, r in results.items()}).T
-    log("\n" + table[["MAE", "RMSE", "R2", "category_accuracy", "alert_precision", "alert_recall"]].to_string())
-    log(f"    best on validation: {best_name}")
+    log(f"  [{h}d] best on validation: {best_name} | 80% interval coverage {interval['coverage_80']:.0%}, "
+        f"width {interval['mean_width']}\n" + table[["MAE", "RMSE", "R2", "category_accuracy", "alert_recall"]].to_string())
 
     per_city = {}
     for city in CITIES:
         m = (test["city"] == city).to_numpy()
         per_city[city] = {n: metrics(test.loc[m, "target_aqi"], test_preds[n][m])["MAE"] for n in models}
 
-    save_result_figures(test, test_preds, ranking, best_name)
-    table.to_csv(REPORTS_DIR / "model_comparison_test.csv")
-    pd.DataFrame({"date": test["target_date"], "city": test["city"], "actual": test["target_aqi"],
-                  **{n: test_preds[n] for n in models}}).to_csv(REPORTS_DIR / "test_predictions.csv", index=False)
-
     report = {
-        "generated": time.strftime("%Y-%m-%d %H:%M"),
-        "data": {"source": "Open-Meteo (CAMS air quality + ERA5 weather)", "cities": list(CITIES),
-                 "start": f"{daily['date'].min():%Y-%m-%d}", "end": f"{daily['date'].max():%Y-%m-%d}",
-                 "city_days": len(daily)},
-        "preprocessing": prep_report,
         "split": {"train": [f"{train['target_date'].min():%Y-%m-%d}", f"{train['target_date'].max():%Y-%m-%d}", len(train)],
                   "validation": [f"{val['target_date'].min():%Y-%m-%d}", f"{val['target_date'].max():%Y-%m-%d}", len(val)],
                   "test": [f"{test['target_date'].min():%Y-%m-%d}", f"{test['target_date'].max():%Y-%m-%d}", len(test)]},
@@ -249,15 +258,63 @@ def main(refresh: bool = False, skip_lstm: bool = False):
         "results": results,
         "test_mae_by_city": per_city,
         "best_model": best_name,
+        "interval": interval,
+    }
+    hbundle = {"selected": selected, "best_model": best_name, "quantile": qxgb, "conformal_margin": margin,
+               "sklearn": {n: m for n, m in models.items() if n != "LSTM" and not n.startswith("Persistence")}}
+    if "LSTM" in models:
+        hbundle["lstm"] = models["LSTM"].state()
+    return report, hbundle, (test, test_preds, ranking, table)
+
+
+def main(refresh: bool = False, skip_lstm: bool = False):
+    for d in (MODELS_DIR, REPORTS_DIR, FIGURES_DIR):
+        d.mkdir(parents=True, exist_ok=True)
+
+    log("1/4 data collection")
+    daily = load_dataset(refresh=refresh)
+    daily.to_csv(DATA_DIR / "daily.csv", index=False)
+    log(f"    {len(daily)} city-days, {daily['city'].nunique()} cities, "
+        f"{daily['date'].min():%Y-%m-%d} .. {daily['date'].max():%Y-%m-%d}")
+
+    log("2/4 preprocessing + exploratory figures")
+    save_eda_figures(F.add_aqi(F.clean(daily)))
+
+    log(f"3/4 training for horizons {F.HORIZONS} (feature selection, tuning, 5 models each)")
+    reports, bundles, fences, prep_report = {}, {}, None, None
+    for h in F.HORIZONS:
+        feats, fences, prep = F.prepare(daily, horizon=h)
+        prep_report = prep_report or prep
+        feats = feats.sort_values(["city", "date"]).reset_index(drop=True)
+        reports[h], bundles[h], out = train_horizon(feats, h, skip_lstm)
+        if h == 1:
+            test, test_preds, ranking, table = out
+            save_result_figures(test, test_preds, ranking, reports[1]["best_model"])
+            table.to_csv(REPORTS_DIR / "model_comparison_test.csv")
+            pd.DataFrame({"date": test["target_date"], "city": test["city"], "actual": test["target_aqi"],
+                          **{n: test_preds[n] for n in test_preds}}).to_csv(REPORTS_DIR / "test_predictions.csv", index=False)
+            xgb1, sel1 = bundles[1]["sklearn"]["XGBoost"], bundles[1]["selected"]
+            shap_mean = contributions(xgb1, test[sel1]).drop(columns="bias").abs().mean().sort_values(ascending=False)
+
+    log("4/4 reports")
+    summary = {h: {"best_model": r["best_model"], "interval": r["interval"],
+                   "test_mae": {n: v["test"]["MAE"] for n, v in r["results"].items()}} for h, r in reports.items()}
+    save_extra_figures(summary, shap_mean)
+    report = {
+        "generated": time.strftime("%Y-%m-%d %H:%M"),
+        "data": {"source": "Open-Meteo (CAMS air quality + ERA5 weather)", "cities": list(CITIES),
+                 "start": f"{daily['date'].min():%Y-%m-%d}", "end": f"{daily['date'].max():%Y-%m-%d}",
+                 "city_days": len(daily)},
+        "preprocessing": prep_report,
+        **reports[1],  # headline numbers are for the next-day forecast
+        "shap_top15": shap_mean.head(15).round(2).to_dict(),
+        "horizons": summary,
+        "horizon_reports": reports,
     }
     (REPORTS_DIR / "metrics.json").write_text(json.dumps(report, indent=2, default=str))
-
-    bundle = {"selected": selected, "fences": fences, "best_model": best_name,
-              "sklearn": {n: m for n, m in models.items() if n not in ("LSTM",) and not n.startswith("Persistence")}}
-    if "LSTM" in models:
-        bundle["lstm"] = models["LSTM"].state()
-    joblib.dump(bundle, MODELS_DIR / "aqi_models.joblib")
-    log(f"saved models/aqi_models.joblib and reports/ (best: {best_name})")
+    joblib.dump({"fences": fences, "horizons": bundles}, MODELS_DIR / "aqi_models.joblib")
+    log("saved models/aqi_models.joblib and reports/ | " +
+        ", ".join(f"{h}d: {s['best_model']} MAE {s['test_mae'][s['best_model']]}" for h, s in summary.items()))
     return report
 
 

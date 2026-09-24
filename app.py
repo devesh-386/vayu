@@ -1,4 +1,4 @@
-"""Streamlit dashboard: live AQI, next-day forecast, alerts and model performance.
+"""Streamlit dashboard: live AQI, 1-3 day forecast with uncertainty and explanations, alerts, model performance.
 
     streamlit run app.py
 """
@@ -11,7 +11,7 @@ import streamlit as st
 from airq import alerts
 from airq.aqi import AQI_BANDS, BREAKPOINTS, CATEGORIES, CATEGORY_COLORS, category_index
 from airq.config import CITIES, FIGURES_DIR, REPORTS_DIR
-from airq.predict import forecast, load_bundle, model_names, recent_frame
+from airq.predict import explain, forecast, horizons, load_bundle, model_names, recent_frame
 
 st.set_page_config(page_title="Air Quality Prediction", page_icon="🌫️", layout="wide")
 
@@ -51,8 +51,8 @@ def aqi_card(label: str, aqi: float, cat: str, note: str = ""):
     )
 
 
-def history_chart(daily: pd.DataFrame, result: dict) -> go.Figure:
-    today = pd.Timestamp(result["date"])
+def history_chart(daily: pd.DataFrame, outlook: list[dict]) -> go.Figure:
+    today = pd.Timestamp(outlook[0]["date"])
     past = daily[daily["date"] <= today].tail(30)
     fig = go.Figure()
     for lo, hi, c, name in zip(AQI_BANDS[:-1], AQI_BANDS[1:], CATEGORY_COLORS, CATEGORIES):
@@ -60,13 +60,28 @@ def history_chart(daily: pd.DataFrame, result: dict) -> go.Figure:
                       annotation_text=name, annotation_position="right", annotation_font_size=10)
     fig.add_trace(go.Scatter(x=past["date"], y=past["aqi"], mode="lines+markers", name="Observed AQI",
                              line=dict(color="#3182bd", width=2), marker=dict(size=5)))
-    fig.add_trace(go.Scatter(x=[today, pd.Timestamp(result["target_date"])],
-                             y=[past["aqi"].iloc[-1], result["predicted_aqi"]], mode="lines+markers",
-                             name=f"Forecast ({result['model']})", line=dict(color="#e6550d", dash="dash", width=2),
-                             marker=dict(size=[0, 12], symbol="diamond")))
-    ymax = max(past["aqi"].max(), result["predicted_aqi"]) * 1.2
+    xs = [today] + [pd.Timestamp(r["target_date"]) for r in outlook]
+    last = past["aqi"].iloc[-1]
+    fig.add_trace(go.Scatter(x=xs + xs[::-1], y=[last] + [r["high"] for r in outlook] + [r["low"] for r in outlook][::-1] + [last],
+                             fill="toself", fillcolor="rgba(230,85,13,0.18)", line=dict(width=0), mode="lines",
+                             name="80% range", hoverinfo="skip"))
+    fig.add_trace(go.Scatter(x=xs, y=[last] + [r["predicted_aqi"] for r in outlook], mode="lines+markers",
+                             name="Forecast", line=dict(color="#e6550d", dash="dash", width=2),
+                             marker=dict(size=[0] + [11] * len(outlook), symbol="diamond")))
+    ymax = max(past["aqi"].max(), max(r["high"] for r in outlook)) * 1.15
     fig.update_layout(height=380, margin=dict(l=10, r=90, t=10, b=10), yaxis=dict(title="AQI", range=[0, max(ymax, 120)]),
                       legend=dict(orientation="h", y=1.08), hovermode="x unified")
+    return fig
+
+
+def explain_chart(why: pd.DataFrame) -> go.Figure:
+    w = why.iloc[::-1]
+    fig = go.Figure(go.Bar(
+        x=w["contribution"], y=w["factor"], orientation="h",
+        marker_color=["#e53935" if v > 0 else "#2e7d32" for v in w["contribution"]],
+        text=[f"{v:+.0f}" for v in w["contribution"]], textposition="outside", cliponaxis=False,
+    ))
+    fig.update_layout(height=330, margin=dict(l=10, r=40, t=10, b=10), xaxis_title="AQI points vs today")
     return fig
 
 
@@ -87,19 +102,22 @@ def subindex_chart(row: pd.Series) -> go.Figure:
 
 b = bundle()
 rep = report()
+HS = horizons(b)
 
 with st.sidebar:
     st.header("Settings")
     city = st.selectbox("City", list(CITIES), index=0)
     names = model_names(b)
-    model = st.selectbox("Model", names, index=names.index(b["best_model"]),
-                         help=f"Default is the model with the lowest validation error ({b['best_model']}).")
+    best1 = b["horizons"][1]["best_model"]
+    choice = st.selectbox("Model", ["Best per horizon"] + names, index=0,
+                          help=f"'Best per horizon' uses the model with the lowest validation error for each "
+                               f"lead time (next day: {best1}).")
     st.divider()
     st.caption("Data: Open-Meteo (CAMS air quality, ERA5 / forecast weather). "
                "AQI: CPCB National AQI. Refreshes every 30 minutes.")
 
 st.title("Intelligent Air Quality Prediction System")
-st.caption("Next-day AQI forecasting from pollutant and weather data using Machine Learning")
+st.caption("1–3 day AQI forecasting from pollutant and weather data using Machine Learning")
 
 tab_live, tab_models, tab_data, tab_how = st.tabs(["Live forecast", "Model performance", "Data analysis", "How it works"])
 
@@ -107,64 +125,87 @@ with tab_live:
     try:
         with st.spinner(f"Fetching latest data for {city}..."):
             daily = recent(city)
-            res = forecast(city, model, b, daily)
+            model_for = (lambda h: None) if choice == "Best per horizon" else (lambda h: choice)
+            outlook = [forecast(city, model_for(h), b, daily, h) for h in HS]
     except Exception as e:  # network failure or incomplete data
         st.error(f"Could not produce a forecast for {city}: {e}")
         st.stop()
 
+    res = outlook[0]
     today_row = daily[daily["date"] == pd.Timestamp(res["date"])].iloc[0]
-    tomorrow_row = daily[daily["date"] == pd.Timestamp(res["target_date"])]
 
-    if res["alert"]:
-        st.error(f"⚠️ **Early warning:** air quality in {city} is forecast to be **{res['predicted_category']}** "
-                 f"(AQI {res['predicted_aqi']:.0f}) on {res['target_date']}. {res['advice']}")
+    worst = max(outlook, key=lambda r: r["predicted_aqi"])
+    maybe = [r for r in outlook if r["possible_alert"]]
+    if worst["alert"]:
+        st.error(f"⚠️ **Early warning:** air quality in {city} is forecast to be **{worst['predicted_category']}** "
+                 f"(AQI {worst['predicted_aqi']:.0f}) on {worst['target_date']}. {worst['advice']}")
+    elif maybe:
+        st.warning(f"Watch: the forecast range for {city} on {maybe[0]['target_date']} reaches "
+                   f"AQI {maybe[0]['high']:.0f} (Poor). Most likely value is {maybe[0]['predicted_aqi']:.0f}.")
     else:
-        st.success(f"No alert: tomorrow's air in {city} is forecast to be {res['predicted_category']}.")
+        st.success(f"No alert: no Poor-or-worse day expected in {city} over the next {len(HS)} days "
+                   f"(worst: {worst['predicted_category']}, AQI {worst['predicted_aqi']:.0f}).")
 
-    c1, c2, c3 = st.columns(3)
-    with c1:
+    cols = st.columns(len(HS) + 1)
+    with cols[0]:
         aqi_card(f"Today · {res['date']}", res["today_aqi"], res["today_category"],
-                 f"Dominant pollutant: {POLLUTANT_LABELS.get(res['today_dominant'], res['today_dominant'])}")
-    with c2:
-        delta = res["predicted_aqi"] - res["today_aqi"]
-        aqi_card(f"Forecast · {res['target_date']}", res["predicted_aqi"], res["predicted_category"],
-                 f"{'▲' if delta > 0 else '▼'} {abs(delta):.0f} vs today · {res['model']}")
-    with c3:
-        st.markdown("**Health advice**")
+                 f"Dominant: {POLLUTANT_LABELS.get(res['today_dominant'], res['today_dominant'])}")
+    for col, r in zip(cols[1:], outlook):
+        with col:
+            label = "Tomorrow" if r["horizon"] == 1 else f"+{r['horizon']} days"
+            aqi_card(f"{label} · {r['target_date']}", r["predicted_aqi"], r["predicted_category"],
+                     f"80% range {r['low']:.0f}–{r['high']:.0f} · {r['model']}")
+
+    left, right = st.columns([3, 2])
+    with left:
+        st.subheader("Last 30 days and the 3-day outlook")
+        st.plotly_chart(history_chart(daily, outlook), width="stretch")
+    with right:
+        st.subheader("Why this forecast?")
+        try:
+            why = explain(city, b, daily)
+            st.plotly_chart(explain_chart(why), width="stretch")
+            st.caption("SHAP contributions (XGBoost, next day): how much each factor pushes tomorrow's AQI "
+                       "up (red) or down (green) compared with today.")
+        except Exception as e:
+            st.caption(f"Explanation unavailable: {e}")
+
+    left, right = st.columns([3, 2])
+    with left:
+        st.subheader("Today's pollutant sub-indices")
+        st.plotly_chart(subindex_chart(today_row), width="stretch")
+        st.caption("The AQI is the highest sub-index (CPCB method).")
+    with right:
+        st.subheader("Health advice")
         st.write(res["advice"])
         st.markdown("**Weather**")
         w1, w2 = st.columns(2)
         w1.metric("Temp today", f"{today_row['temp']:.1f} °C")
         w2.metric("Humidity", f"{today_row['humidity']:.0f} %")
+        tomorrow_row = daily[daily["date"] == pd.Timestamp(res["target_date"])]
         if len(tomorrow_row):
             t = tomorrow_row.iloc[0]
             w1.metric("Wind tomorrow", f"{t['wind_speed']:.0f} km/h")
             w2.metric("Rain tomorrow", f"{t['precip']:.1f} mm")
 
-    left, right = st.columns([3, 2])
-    with left:
-        st.subheader("Last 30 days and tomorrow's forecast")
-        st.plotly_chart(history_chart(daily, res), width="stretch")
-    with right:
-        st.subheader("Today's pollutant sub-indices")
-        st.plotly_chart(subindex_chart(today_row), width="stretch")
-        st.caption("The AQI is the highest sub-index (CPCB method).")
-
-    with st.expander("All models for this city"):
+    with st.expander("All models, all horizons"):
         rows = []
         for n in names:
-            try:
-                r = forecast(city, n, b, daily)
-                rows.append({"Model": n, "Forecast AQI": r["predicted_aqi"], "Category": r["predicted_category"]})
-            except ValueError as e:
-                rows.append({"Model": n, "Forecast AQI": None, "Category": str(e)})
+            row = {"Model": n}
+            for h in HS:
+                try:
+                    r = forecast(city, n, b, daily, h)
+                    row[f"+{h} day"] = f"{r['predicted_aqi']:.0f} ({r['predicted_category']})"
+                except ValueError as e:
+                    row[f"+{h} day"] = str(e)
+            rows.append(row)
         st.dataframe(pd.DataFrame(rows), hide_index=True, width="stretch")
 
     with st.expander("Email alert"):
-        st.code(alerts.build_message(res), language=None)
+        st.code(alerts.build_message(worst), language=None)
         if alerts.email_configured():
             if st.button("Send this alert by email"):
-                st.success("Sent." if alerts.send_email(res) else "Email not configured.")
+                st.success("Sent." if alerts.send_email(worst) else "Email not configured.")
         else:
             st.caption("Set AQI_SMTP_HOST, AQI_SMTP_USER, AQI_SMTP_PASSWORD and AQI_ALERT_TO to enable email alerts.")
 
@@ -195,6 +236,17 @@ with tab_models:
             f"**{gain:.0f}%** (MAE {rep['results'][best]['test']['MAE']} vs {base}). "
             "Alerts fire when forecast AQI exceeds 200 (Poor or worse).")
 
+    st.subheader("Forecasting further ahead")
+    hz = rep["horizons"]
+    htbl = pd.DataFrame({f"+{h} day": s["test_mae"] for h, s in hz.items()})
+    htbl.loc["80% range: actual inside"] = [f"{s['interval']['coverage_80']:.0%}" for s in hz.values()]
+    htbl.loc["80% range: avg width"] = [s["interval"]["mean_width"] for s in hz.values()]
+    a, bcol = st.columns([2, 3])
+    a.dataframe(htbl.astype(str), width="stretch")
+    a.caption("Test MAE per lead time. The range comes from quantile XGBoost, calibrated on the validation set "
+              "(conformal prediction).")
+    bcol.image(str(FIGURES_DIR / "error_by_horizon.png"))
+
     st.subheader("Mean absolute error by city (test)")
     st.dataframe(pd.DataFrame(rep["test_mae_by_city"]).T.round(1), width="stretch")
 
@@ -202,7 +254,8 @@ with tab_models:
     a.image(str(FIGURES_DIR / "test_delhi.png"), caption="Delhi: forecast vs actual (test period)")
     bcol.image(str(FIGURES_DIR / "test_chennai.png"), caption="Chennai: forecast vs actual (test period)")
     a.image(str(FIGURES_DIR / "confusion_matrix.png"), caption="AQI category confusion matrix")
-    bcol.image(str(FIGURES_DIR / "feature_importance.png"), caption="Most useful features")
+    bcol.image(str(FIGURES_DIR / "feature_importance.png"), caption="Most useful features (permutation importance)")
+    a.image(str(FIGURES_DIR / "shap_importance.png"), caption="SHAP: average impact of each feature on the forecast")
 
 with tab_data:
     d = rep["data"]
@@ -225,10 +278,12 @@ with tab_how:
 | **Data collection** | Hourly PM2.5, PM10, CO, NO₂, SO₂, O₃ (CAMS) and temperature, humidity, wind, rain, pressure, boundary-layer height (ERA5 / weather forecast) for 8 Indian cities from Open-Meteo. |
 | **Preprocessing** | Daily aggregation with CPCB averaging rules (24-h means; 8-h max for CO and O₃). Short gaps interpolated, impossible values removed, outliers clipped with IQR fences learned on training data only. |
 | **AQI calculation** | CPCB National AQI: each pollutant → sub-index by breakpoint interpolation; AQI = worst sub-index. |
-| **Feature engineering** | Lags (1, 2, 3, 7 days), rolling means, today's weather, tomorrow's forecast weather, season and weekday, city. |
+| **Feature engineering** | Lags (1, 2, 3, 7 days), rolling means, today's weather, forecast weather for the target day, season, weekday, Diwali proximity, crop-burning season, city. |
 | **Feature selection** | Permutation importance of a Random Forest on the validation set; weak features dropped. |
 | **Models** | Persistence baseline, Linear Regression, Random Forest, XGBoost, LSTM. Trees and LSTM learn the change from today's AQI. |
-| **Prediction** | Next-day AQI and CPCB category (Good → Severe). |
+| **Prediction** | AQI 1, 2 and 3 days ahead with CPCB category (Good → Severe). |
+| **Uncertainty** | 80% range from quantile XGBoost, calibrated on validation data (conformal prediction). |
+| **Explanation** | SHAP values from XGBoost show which factors push the forecast up or down. |
 | **Alerts** | Early warning when the forecast is Poor (AQI > 200) or worse: dashboard banner, optional email. |
 """)
     st.caption("Limitations: pollutant data is from the CAMS atmospheric model (about 40 km grid), not ground monitoring "
