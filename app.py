@@ -247,6 +247,22 @@ with tab_models:
               "(conformal prediction).")
     bcol.image(str(FIGURES_DIR / "error_by_horizon.png"))
 
+    if "classification" in rep:
+        st.subheader("Category forecast: regression vs direct classifier")
+        c = rep["classification"]
+        ctbl = pd.DataFrame({
+            f"From regression ({best})": c["from_regression"]["recall_by_category"],
+            "Balanced XGBoost classifier": c["balanced_classifier"]["recall_by_category"],
+            "Training days": c["train_days_by_category"],
+            "Test days": c["test_days_by_category"],
+        })
+        st.dataframe(ctbl, width="stretch")
+        st.caption(f"Recall per category on the test set. Macro-F1: regression {c['from_regression']['macro_f1']:.2f}, "
+                   f"classifier {c['balanced_classifier']['macro_f1']:.2f}. The classifier catches more Good and "
+                   "Very Poor days but cannot learn Severe (only "
+                   f"{c['train_days_by_category']['Severe']} Severe day in training), so the dashboard derives "
+                   "categories from the regression forecast.")
+
     st.subheader("Mean absolute error by city (test)")
     st.dataframe(pd.DataFrame(rep["test_mae_by_city"]).T.round(1), width="stretch")
 

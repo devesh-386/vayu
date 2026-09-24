@@ -1,5 +1,5 @@
 {
-  "generated": "2026-09-25 02:03",
+  "generated": "2026-09-25 02:14",
   "data": {
     "source": "Open-Meteo (CAMS air quality + ERA5 weather)",
     "cities": [
@@ -336,6 +336,48 @@
     "aqi_lag7": 1.7100000381469727,
     "wind_v": 1.4900000095367432,
     "city_Delhi": 1.3200000524520874
+  },
+  "classification": {
+    "train_days_by_category": {
+      "Good": 149,
+      "Satisfactory": 1844,
+      "Moderate": 3466,
+      "Poor": 896,
+      "Very Poor": 620,
+      "Severe": 1
+    },
+    "from_regression": {
+      "accuracy": 0.7764,
+      "macro_f1": 0.5972,
+      "recall_by_category": {
+        "Good": 0.087,
+        "Satisfactory": 0.817,
+        "Moderate": 0.854,
+        "Poor": 0.638,
+        "Very Poor": 0.516,
+        "Severe": 0.554
+      }
+    },
+    "balanced_classifier": {
+      "accuracy": 0.7157,
+      "macro_f1": 0.5085,
+      "recall_by_category": {
+        "Good": 0.652,
+        "Satisfactory": 0.831,
+        "Moderate": 0.683,
+        "Poor": 0.634,
+        "Very Poor": 0.775,
+        "Severe": 0.0
+      }
+    },
+    "test_days_by_category": {
+      "Good": 23,
+      "Satisfactory": 1038,
+      "Moderate": 1663,
+      "Poor": 495,
+      "Very Poor": 285,
+      "Severe": 56
+    }
   },
   "horizons": {
     "1": {

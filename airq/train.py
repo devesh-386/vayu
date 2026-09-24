@@ -20,6 +20,7 @@ from sklearn.metrics import mean_absolute_error
 
 from . import features as F
 from .aqi import AQI_BANDS, CATEGORIES, CATEGORY_COLORS
+from .classify import compare as compare_classifier
 from .config import CITIES, DATA_DIR, FIGURES_DIR, MODELS_DIR, N_JOBS, POLLUTANTS, REPORTS_DIR, SEED
 from .data import load_dataset
 from .evaluate import category_confusion, metrics
@@ -294,6 +295,10 @@ def main(refresh: bool = False, skip_lstm: bool = False):
             pd.DataFrame({"date": test["target_date"], "city": test["city"], "actual": test["target_aqi"],
                           **{n: test_preds[n] for n in test_preds}}).to_csv(REPORTS_DIR / "test_predictions.csv", index=False)
             xgb1, sel1 = bundles[1]["sklearn"]["XGBoost"], bundles[1]["selected"]
+            tr1, va1, _ = F.split(feats)
+            _, classification = compare_classifier(tr1, va1, test, sel1, test_preds[reports[1]["best_model"]])
+            log(f"  [1d] category macro-F1: regression {classification['from_regression']['macro_f1']} "
+                f"vs balanced classifier {classification['balanced_classifier']['macro_f1']}")
             shap_mean = contributions(xgb1, test[sel1]).drop(columns="bias").abs().mean().sort_values(ascending=False)
 
     log("4/4 reports")
@@ -308,6 +313,7 @@ def main(refresh: bool = False, skip_lstm: bool = False):
         "preprocessing": prep_report,
         **reports[1],  # headline numbers are for the next-day forecast
         "shap_top15": shap_mean.head(15).round(2).to_dict(),
+        "classification": classification,
         "horizons": summary,
         "horizon_reports": reports,
     }

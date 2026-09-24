@@ -68,6 +68,7 @@ The data is split by time: train Aug 2022–Dec 2024, validation Jan–Jun 2025,
 - XGBoost and Random Forest catch the most Poor-or-worse days (84–85% recall).
 - Tree models and the LSTM predict the *change* from today's AQI. Predicting the level directly left Random Forest and XGBoost with an RMSE of about 41, barely better than persistence, because trees cannot extrapolate to unseen highs.
 - **Uncertainty:** raw quantile XGBoost covered only 72–74% of outcomes with its "80%" range (over-confident). Conformal calibration on the validation set widens it; on test it covers 85–86%, slightly conservative because the test period was more volatile than validation.
+- **Direct classifier vs regression:** a class-balanced XGBoost classifier catches more Good (65% vs 13%) and Very Poor (78% vs 45%) days, but scores 0% on Severe because the training period contains only one Severe day. Macro-F1 0.51 vs 0.60, so categories are derived from the regression forecast.
 - **SHAP** (average impact, AQI points): today's AQI 13.1, forecast wind speed 8.5, forecast wind direction 4.6, today's ozone 3.7, forecast humidity 3.5, temperature change 3.3, forecast rain 3.0. Wind and rain disperse and wash out pollution, as physics says. The dashboard shows the same breakdown for every live forecast.
 
 Figures are in `reports/figures/`, and all numbers are in `reports/metrics.json`.
