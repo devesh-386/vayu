@@ -90,7 +90,7 @@ Figures are in `reports/figures/`, and all numbers are in `reports/metrics.json`
 1. **Model data, not station data.** Pollutant values come from the CAMS global atmospheric model (about 40 km grid), not CPCB monitoring stations. CAMS is known to **overestimate surface ozone over India**: O₃ is the dominant pollutant on most days here, while station data for cities like Chennai is usually PM-driven. It also shows dust (PM10) episodes in Delhi during the 2026 monsoon that station data would likely not confirm. The ML pipeline is source-independent. Training on CPCB station data (e.g. the Kaggle *Air Quality Data in India* dataset) would give more realistic absolute AQI values.
 2. **City-level, not street-level.** One grid point per city.
 3. **The weather forecast is idealised in training.** Training uses observed (ERA5) weather for "tomorrow". In live use it comes from a forecast, which is slightly less accurate.
-4. **Diwali/crop-burning features have little effect here** because CAMS does not model firecracker smoke well; with station data they should matter more.
+4. **Diwali/crop-burning features were dropped by feature selection at every horizon** (no measurable gain), likely because CAMS does not capture firecracker smoke well. With station data they should matter more.
 5. **Email alerts need SMTP settings** (`AQI_SMTP_HOST`, `AQI_SMTP_USER`, `AQI_SMTP_PASSWORD`, `AQI_ALERT_TO`). SMS and a mobile app are not implemented. The dashboard works in a phone browser.
 
 ## Project layout
