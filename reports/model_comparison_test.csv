@@ -1,0 +1,6 @@
+,MAE,RMSE,R2,category_accuracy,category_within_one,category_macro_f1,alert_precision,alert_recall,alert_days
+Persistence (baseline),25.16,42.35,0.7534,0.7553,0.9792,0.6198,0.777,0.7751,836.0
+Linear Regression,24.21,37.79,0.8037,0.7365,0.9907,0.5832,0.7814,0.7955,836.0
+Random Forest,22.49,37.45,0.8073,0.7581,0.9888,0.5783,0.7637,0.8505,836.0
+XGBoost,22.19,37.27,0.8091,0.766,0.9899,0.5987,0.7716,0.8529,836.0
+LSTM,21.91,36.6,0.8158,0.7756,0.9893,0.6218,0.7956,0.8146,836.0

@@ -1,0 +1,317 @@
+{
+  "generated": "2026-09-25 01:25",
+  "data": {
+    "source": "Open-Meteo (CAMS air quality + ERA5 weather)",
+    "cities": [
+      "Chennai",
+      "Delhi",
+      "Mumbai",
+      "Kolkata",
+      "Bengaluru",
+      "Hyderabad",
+      "Ahmedabad",
+      "Lucknow"
+    ],
+    "start": "2022-08-05",
+    "end": "2026-09-18",
+    "city_days": 12048
+  },
+  "preprocessing": {
+    "raw_rows": 12048,
+    "raw_missing_pct": {
+      "pm2_5": 0.0,
+      "pm10": 0.0,
+      "no2": 0.0,
+      "so2": 0.0,
+      "co": 0.0,
+      "o3": 0.0
+    },
+    "after_clean_missing_pct": {
+      "pm2_5": 0.0,
+      "pm10": 0.0,
+      "no2": 0.0,
+      "so2": 0.0,
+      "co": 0.0,
+      "o3": 0.0
+    },
+    "outlier_cells_clipped": 48,
+    "feature_rows": 11984,
+    "rows_dropped_incomplete": 64
+  },
+  "split": {
+    "train": [
+      "2022-08-13",
+      "2024-12-31",
+      6976
+    ],
+    "validation": [
+      "2025-01-01",
+      "2025-06-30",
+      1448
+    ],
+    "test": [
+      "2025-07-01",
+      "2026-09-18",
+      3560
+    ]
+  },
+  "features": {
+    "all": 52,
+    "selected": [
+      "aqi",
+      "next_wind_speed",
+      "next_wind_u",
+      "o3",
+      "next_precip",
+      "temp_change",
+      "next_wind_v",
+      "wind_v",
+      "next_blh",
+      "aqi_roll7",
+      "next_humidity",
+      "aqi_lag7",
+      "wind_speed",
+      "city_Delhi",
+      "wind_u",
+      "aqi_std7",
+      "so2",
+      "pm10",
+      "next_temp",
+      "pm2_5",
+      "aqi_lag3",
+      "no2",
+      "pm2_5_lag7",
+      "doy_cos",
+      "pressure",
+      "blh",
+      "next_pressure",
+      "city_Mumbai",
+      "precip",
+      "temp_min",
+      "pm2_5_lag3",
+      "city_Kolkata",
+      "temp",
+      "pm10_lag1"
+    ],
+    "importance_top20": {
+      "aqi": 54.866,
+      "next_wind_speed": 3.08,
+      "next_wind_u": 1.041,
+      "o3": 0.893,
+      "next_precip": 0.62,
+      "temp_change": 0.592,
+      "next_wind_v": 0.462,
+      "wind_v": 0.422,
+      "next_blh": 0.403,
+      "aqi_roll7": 0.34,
+      "next_humidity": 0.332,
+      "aqi_lag7": 0.283,
+      "wind_speed": 0.267,
+      "city_Delhi": 0.244,
+      "wind_u": 0.226,
+      "aqi_std7": 0.226,
+      "so2": 0.208,
+      "pm10": 0.167,
+      "next_temp": 0.138,
+      "pm2_5": 0.138
+    }
+  },
+  "hyperparameters": {
+    "random_forest": {
+      "min_samples_leaf": 5,
+      "max_features": 0.3
+    },
+    "xgboost": {
+      "max_depth": 7,
+      "learning_rate": 0.02,
+      "best_iteration": 1118
+    }
+  },
+  "lstm": {
+    "device": "cpu",
+    "best_epoch": 9,
+    "test_rows_with_full_history": 3560,
+    "test_rows": 3560
+  },
+  "results": {
+    "Persistence (baseline)": {
+      "validation": {
+        "MAE": 30.1,
+        "RMSE": 47.22,
+        "R2": 0.6933,
+        "category_accuracy": 0.7224,
+        "category_within_one": 0.9703,
+        "category_macro_f1": 0.5444,
+        "alert_precision": 0.8008,
+        "alert_recall": 0.8054,
+        "alert_days": 514
+      },
+      "test": {
+        "MAE": 25.16,
+        "RMSE": 42.35,
+        "R2": 0.7534,
+        "category_accuracy": 0.7553,
+        "category_within_one": 0.9792,
+        "category_macro_f1": 0.6198,
+        "alert_precision": 0.777,
+        "alert_recall": 0.7751,
+        "alert_days": 836
+      }
+    },
+    "Linear Regression": {
+      "validation": {
+        "MAE": 28.63,
+        "RMSE": 42.91,
+        "R2": 0.7467,
+        "category_accuracy": 0.7079,
+        "category_within_one": 0.9827,
+        "category_macro_f1": 0.5033,
+        "alert_precision": 0.8026,
+        "alert_recall": 0.8307,
+        "alert_days": 514
+      },
+      "test": {
+        "MAE": 24.21,
+        "RMSE": 37.79,
+        "R2": 0.8037,
+        "category_accuracy": 0.7365,
+        "category_within_one": 0.9907,
+        "category_macro_f1": 0.5832,
+        "alert_precision": 0.7814,
+        "alert_recall": 0.7955,
+        "alert_days": 836
+      }
+    },
+    "Random Forest": {
+      "validation": {
+        "MAE": 27.55,
+        "RMSE": 42.55,
+        "R2": 0.7509,
+        "category_accuracy": 0.7224,
+        "category_within_one": 0.9827,
+        "category_macro_f1": 0.5295,
+        "alert_precision": 0.7865,
+        "alert_recall": 0.8813,
+        "alert_days": 514
+      },
+      "test": {
+        "MAE": 22.49,
+        "RMSE": 37.45,
+        "R2": 0.8073,
+        "category_accuracy": 0.7581,
+        "category_within_one": 0.9888,
+        "category_macro_f1": 0.5783,
+        "alert_precision": 0.7637,
+        "alert_recall": 0.8505,
+        "alert_days": 836
+      }
+    },
+    "XGBoost": {
+      "validation": {
+        "MAE": 26.5,
+        "RMSE": 41.66,
+        "R2": 0.7612,
+        "category_accuracy": 0.7334,
+        "category_within_one": 0.9876,
+        "category_macro_f1": 0.5359,
+        "alert_precision": 0.7958,
+        "alert_recall": 0.8794,
+        "alert_days": 514
+      },
+      "test": {
+        "MAE": 22.19,
+        "RMSE": 37.27,
+        "R2": 0.8091,
+        "category_accuracy": 0.766,
+        "category_within_one": 0.9899,
+        "category_macro_f1": 0.5987,
+        "alert_precision": 0.7716,
+        "alert_recall": 0.8529,
+        "alert_days": 836
+      }
+    },
+    "LSTM": {
+      "validation": {
+        "MAE": 26.36,
+        "RMSE": 41.13,
+        "R2": 0.7673,
+        "category_accuracy": 0.7465,
+        "category_within_one": 0.9814,
+        "category_macro_f1": 0.5613,
+        "alert_precision": 0.8203,
+        "alert_recall": 0.8346,
+        "alert_days": 514
+      },
+      "test": {
+        "MAE": 21.91,
+        "RMSE": 36.6,
+        "R2": 0.8158,
+        "category_accuracy": 0.7756,
+        "category_within_one": 0.9893,
+        "category_macro_f1": 0.6218,
+        "alert_precision": 0.7956,
+        "alert_recall": 0.8146,
+        "alert_days": 836
+      }
+    }
+  },
+  "test_mae_by_city": {
+    "Chennai": {
+      "Persistence (baseline)": 20.56,
+      "Linear Regression": 20.3,
+      "Random Forest": 18.53,
+      "XGBoost": 18.94,
+      "LSTM": 19.46
+    },
+    "Delhi": {
+      "Persistence (baseline)": 57.77,
+      "Linear Regression": 55.44,
+      "Random Forest": 54.63,
+      "XGBoost": 54.79,
+      "LSTM": 52.06
+    },
+    "Mumbai": {
+      "Persistence (baseline)": 20.56,
+      "Linear Regression": 23.59,
+      "Random Forest": 18.82,
+      "XGBoost": 18.14,
+      "LSTM": 18.47
+    },
+    "Kolkata": {
+      "Persistence (baseline)": 29.34,
+      "Linear Regression": 26.0,
+      "Random Forest": 25.3,
+      "XGBoost": 24.41,
+      "LSTM": 24.18
+    },
+    "Bengaluru": {
+      "Persistence (baseline)": 16.6,
+      "Linear Regression": 15.43,
+      "Random Forest": 13.71,
+      "XGBoost": 12.9,
+      "LSTM": 13.26
+    },
+    "Hyderabad": {
+      "Persistence (baseline)": 13.2,
+      "Linear Regression": 12.66,
+      "Random Forest": 11.35,
+      "XGBoost": 11.38,
+      "LSTM": 11.03
+    },
+    "Ahmedabad": {
+      "Persistence (baseline)": 14.35,
+      "Linear Regression": 13.99,
+      "Random Forest": 13.22,
+      "XGBoost": 12.56,
+      "LSTM": 12.33
+    },
+    "Lucknow": {
+      "Persistence (baseline)": 28.92,
+      "Linear Regression": 26.25,
+      "Random Forest": 24.36,
+      "XGBoost": 24.43,
+      "LSTM": 24.45
+    }
+  },
+  "best_model": "LSTM"
+}
