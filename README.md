@@ -18,6 +18,10 @@ python -m pytest              # 28 unit tests
 
 No API keys are needed. The processed daily dataset (`data/daily.csv`) is committed, so training works offline. The trained models are not committed (47 MB); `python -m airq.train` rebuilds them in about 8 minutes on a CPU.
 
+## Live site
+
+**https://web-nine-kappa-ef8zwl9v0w.vercel.app**: frontend and API are both on Vercel. `api/index.py` is a Python function that fetches the latest Open-Meteo data and runs the XGBoost forecaster (`airq/serve.py`, boosters in `models/xgb/`). PyTorch is too large for a Vercel function, so the live site serves XGBoost; the LSTM runs locally with the full pipeline. Responses are cached for 30 minutes.
+
 ## How it maps to the block diagram
 
 | Block (review deck) | Implementation |
