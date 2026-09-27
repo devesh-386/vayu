@@ -1,0 +1,118 @@
+@import 'tailwindcss';
+@import '@fontsource-variable/geist';
+@import '@fontsource-variable/geist-mono';
+
+/*
+  Design tokens. One cool-neutral palette, one accent (cobalt).
+  AQI category colours are data, not decoration, and live in src/lib/aqi.ts.
+  Shape system: panels 16px radius, interactive controls full pill.
+*/
+:root {
+  --bg: #f3f4f6;
+  --surface: #fbfbfc;
+  --surface-2: #eceef1;
+  --ink: #101217;
+  --muted: #525a67;
+  --faint: #8a919c;
+  --line: rgb(16 18 23 / 0.1);
+  --accent: #2c55e0;
+  --accent-ink: #ffffff;
+  --shadow: 0 1px 0 rgb(255 255 255 / 0.7) inset, 0 20px 40px -24px rgb(30 40 70 / 0.25);
+  color-scheme: light;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #0b0d10;
+    --surface: #121519;
+    --surface-2: #181c22;
+    --ink: #eceef2;
+    --muted: #a3aab5;
+    --faint: #6d7480;
+    --line: rgb(255 255 255 / 0.08);
+    --accent: #7391ff;
+    --accent-ink: #0b0d10;
+    --shadow: 0 1px 0 rgb(255 255 255 / 0.04) inset, 0 24px 48px -28px rgb(0 0 0 / 0.8);
+    color-scheme: dark;
+  }
+}
+
+@theme {
+  --font-sans: 'Geist Variable', ui-sans-serif, system-ui, sans-serif;
+  --font-mono: 'Geist Mono Variable', ui-monospace, monospace;
+  --color-bg: var(--bg);
+  --color-surface: var(--surface);
+  --color-surface-2: var(--surface-2);
+  --color-ink: var(--ink);
+  --color-muted: var(--muted);
+  --color-faint: var(--faint);
+  --color-line: var(--line);
+  --color-accent: var(--accent);
+  --color-accent-ink: var(--accent-ink);
+}
+
+html {
+  background: var(--bg);
+  color: var(--ink);
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+  scroll-behavior: smooth;
+  scroll-padding-top: 5rem;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html {
+    scroll-behavior: auto;
+  }
+}
+
+body {
+  margin: 0;
+  min-height: 100dvh;
+}
+
+::selection {
+  background: var(--accent);
+  color: var(--accent-ink);
+}
+
+.panel {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  box-shadow: var(--shadow);
+}
+
+.tabular {
+  font-variant-numeric: tabular-nums;
+}
+
+/* Masked line wrappers for the headline reveal (see LineReveal.tsx). */
+.line-mask {
+  overflow: hidden;
+  padding-bottom: 0.08em;
+  margin-bottom: -0.08em;
+}
+
+.skeleton {
+  background: linear-gradient(90deg, var(--surface-2) 0%, var(--line) 50%, var(--surface-2) 100%);
+  background-size: 200% 100%;
+  border-radius: 10px;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .skeleton {
+    animation: shimmer 1.6s ease-in-out infinite;
+  }
+}
+
+@keyframes shimmer {
+  from { background-position: 100% 0; }
+  to { background-position: -100% 0; }
+}
+
+:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 3px;
+  border-radius: 6px;
+}

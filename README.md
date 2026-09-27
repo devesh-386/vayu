@@ -111,3 +111,15 @@ app.py          Streamlit dashboard
 tests/          unit tests (AQI maths, leakage, preprocessing, split)
 reports/        metrics.json, model comparison, figures
 ```
+
+## Web app (Vayu)
+
+Product site + live forecast UI: React 19, Vite, Tailwind v4, GSAP. Served by FastAPI (`airq/api.py`).
+
+```bash
+cd web && npm install && npm run build && cd ..
+uvicorn airq.api:app --port 8000     # open http://localhost:8000
+```
+
+Dev mode: run uvicorn, then `cd web && npm run dev` (http://localhost:5190, proxies /api).
+Animations adapted from Animmaster: particle haze hero (Background/3, density follows live AQI), headline line reveal (Hero/15). Respects `prefers-reduced-motion`; light and dark themes follow the system.

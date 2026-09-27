@@ -35,9 +35,10 @@ def feature_label(name: str) -> str:
         return "forecast " + WEATHER_LABELS[name[5:]]
     if name in WEATHER_LABELS:
         return "today's " + WEATHER_LABELS[name]
-    for stem, label in (("aqi_lag", "AQI {} day(s) ago"), ("pm2_5_lag", "PM2.5 {} day(s) ago"), ("pm10_lag", "PM10 {} day(s) ago")):
+    for stem, what in (("aqi_lag", "AQI"), ("pm2_5_lag", "PM2.5"), ("pm10_lag", "PM10")):
         if name.startswith(stem):
-            return label.format(name[len(stem):])
+            days = int(name[len(stem):])
+            return {1: f"yesterday's {what}", 7: f"{what} a week ago"}.get(days, f"{what} {days} days ago")
     return name
 
 
