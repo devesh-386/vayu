@@ -9,7 +9,7 @@ Forecasts the **Air Quality Index 1, 2 and 3 days ahead** for 8 Indian cities fr
 ## Quick start
 
 ```bash
-pip install -r requirements.txt
+pip install -r requirements-train.txt
 python -m airq.train          # fetch data, train all models for 1-3 day horizons (~8 min CPU), write reports/
 streamlit run app.py          # dashboard at http://localhost:8501
 python -m airq.predict Delhi  # command-line forecast

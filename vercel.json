@@ -1,0 +1,13 @@
+{
+  "framework": null,
+  "installCommand": "cd web && npm ci",
+  "buildCommand": "cd web && npm run build",
+  "outputDirectory": "web/dist",
+  "rewrites": [{ "source": "/api/(.*)", "destination": "/api/index" }],
+  "functions": {
+    "api/index.py": {
+      "maxDuration": 60,
+      "excludeFiles": "{web/**,tests/**,app.py,data/**,reports/figures/**,reports/*.csv}"
+    }
+  }
+}

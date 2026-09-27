@@ -1,7 +1,0 @@
-{
-  "rewrites": [
-    { "source": "/api/city/:city", "destination": "/api/city/:city.json" },
-    { "source": "/api/overview", "destination": "/api/overview.json" },
-    { "source": "/api/model", "destination": "/api/model.json" }
-  ]
-}

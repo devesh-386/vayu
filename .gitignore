@@ -2,7 +2,9 @@ __pycache__/
 *.pyc
 .pytest_cache/
 data/raw/
-models/
+models/*
+!models/xgb/
 .claude/
 web/node_modules/
 web/dist/
+.vercel/
