@@ -4,6 +4,7 @@ import { CITIES, type CityData } from '../lib/api'
 import { band, colorFor, dayLabel } from '../lib/aqi'
 import { LineReveal } from './LineReveal'
 import { ParticleField } from './ParticleField'
+import { WeatherSky } from './WeatherSky'
 
 type Props = {
   city: string
@@ -23,6 +24,11 @@ export function Hero({ city, onCity, data, loading, error }: Props) {
       {/* Particle haze: denser and tinted by the selected city's live AQI. */}
       <ParticleField aqi={aqi} colors={colors}
         className="pointer-events-none absolute inset-0 -z-10 opacity-90 [mask-image:radial-gradient(ellipse_75%_70%_at_70%_45%,black,transparent)]" />
+
+      {data && (
+        <WeatherSky humidity={data.today.weather.humidity} precip={data.today.weather.precip} wind={data.today.weather.wind_speed}
+          className="pointer-events-none absolute inset-0 -z-10 h-full w-full" />
+      )}
 
       <div className="mx-auto grid min-h-[calc(100dvh-4rem)] max-w-[1320px] items-center gap-12 px-5 pb-16 pt-12 md:px-8 lg:grid-cols-[minmax(0,1.25fr)_minmax(0,1fr)] lg:pt-16">
         <div>
@@ -78,6 +84,9 @@ export function Hero({ city, onCity, data, loading, error }: Props) {
                     {data.today.category}
                   </span>
                 </div>
+                <p className="mt-4 text-sm text-muted">
+                  {data.today.weather.precip > 0.05 ? `Rain ${data.today.weather.precip} mm` : 'Dry'}, humidity {data.today.weather.humidity}%, wind {data.today.weather.wind_speed} km/h
+                </p>
                 {tomorrow && (
                   <div className="mt-8 grid grid-cols-3 gap-2 border-t border-line pt-5">
                     {data.outlook.map(o => (
